@@ -1,14 +1,33 @@
 import { useCallback, useSyncExternalStore } from 'react'
 import { MAX_PROMPT } from '../config/env'
-import { getPromptLimit, savePromptLimit, resetPromptLimit } from '../storage/prompt'
+import { getPromptLimit, savePromptLimit } from '../storage/prompt'
+import type { PromptLimit } from '../types'
+
+let cached: PromptLimit | null = null
 
 function subscribe(callback: () => void) {
-  window.addEventListener('storage', callback)
-  return () => window.removeEventListener('storage', callback)
+  cached = null
+  function handler(e: StorageEvent) {
+    if (e.key === 'prompt_limit') cached = null
+    callback()
+  }
+  window.addEventListener('storage', handler)
+  return () => window.removeEventListener('storage', handler)
 }
 
 function getSnapshot() {
-  return getPromptLimit()
+  if (!cached) {
+    cached = getPromptLimit()
+  }
+  return cached
+}
+
+function getToday(): string {
+  const now = new Date()
+  const y = now.getFullYear()
+  const m = String(now.getMonth() + 1).padStart(2, '0')
+  const d = String(now.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
 }
 
 export function usePromptLimit() {
@@ -16,17 +35,14 @@ export function usePromptLimit() {
 
   const increase = useCallback(() => {
     const current = getPromptLimit()
-    const today = new Date()
-    const y = today.getFullYear()
-    const m = String(today.getMonth() + 1).padStart(2, '0')
-    const d = String(today.getDate()).padStart(2, '0')
-    const todayStr = `${y}-${m}-${d}`
+    const todayStr = getToday()
 
     if (current.date !== todayStr) {
-      resetPromptLimit()
-      savePromptLimit({ date: todayStr, count: 1 })
+      cached = { date: todayStr, count: 1 }
+      savePromptLimit(cached)
     } else {
-      savePromptLimit({ date: current.date, count: current.count + 1 })
+      cached = { date: current.date, count: current.count + 1 }
+      savePromptLimit(cached)
     }
   }, [])
 
